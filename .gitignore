@@ -4,3 +4,4 @@ config.py
 *.json
 *.txt
 *.html
+*.log

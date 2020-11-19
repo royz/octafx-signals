@@ -95,7 +95,7 @@ class Octafx:
                     _symbol = cols[2].text.strip()
                     _type = cols[1].text.strip()
                     _id = trade['data-deal-id']
-                    if _type == 'Bonus':
+                    if _type == 'Bonus' or _type == 'Deposit':
                         continue
                     trades.append({
                         'id': _id,
@@ -138,9 +138,31 @@ def random_sleep():
     time.sleep(random.randint(7, 16))
 
 
-class Telegram:
-    def send_notification(self):
-        pass
+def send_notification(account, trade_info):
+    telegram_account = account['telegram']
+    logger.info(
+        f'new notification for {account["user"]}: {trade_info["group"]} | {trade_info["symbol"]} | {trade_info["type"]}'
+    )
+    url = f'https://api.telegram.org/bot{telegram_account["token"]}/sendMessage'
+
+    text = f'Order {trade_info["id"]}\n' \
+           f'{"===[ NEW ]===========" if trade_info["group"] == "open" else "===CLOSED==========="}\n' \
+           f'{trade_info["symbol"]} {trade_info["type"]}\n' \
+           f'==================='
+
+    params = {
+        'chat_id': telegram_account['chat_id'],
+        'text': text
+    }
+
+    try:
+        resp = requests.get(url, params=params)
+        if resp.json()['ok']:
+            logger.info('notification sent successfully')
+        else:
+            logger.warning('could not send notification')
+    except Exception as e:
+        logger.error(err(e))
 
 
 if __name__ == '__main__':
@@ -152,9 +174,43 @@ if __name__ == '__main__':
             logging.StreamHandler(sys.stdout)
         )
     )
-    logging.getLogger(requests.__name__).setLevel(logging.ERROR)
+    logging.getLogger('requests').setLevel(logging.ERROR)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
     logger = logging.getLogger()
 
     octafx = Octafx()
-    print('logged in:', octafx.login())
-    octafx.update_trades(account_number=config.accounts['Sparrow13']['id'])
+    logger.info('logging in...')
+
+    if octafx.login():
+        logger.info('logged in')
+    else:
+        logger.error('failed to log in')
+        quit()
+
+    unique_trade_ids = []  # a list of unique ids of all previous trades
+
+    first_iter = True
+    while True:
+        for account in config.accounts:
+            trades = octafx.update_trades(account_number=account['id'])
+            if trades is None:
+                continue
+
+            new_trades = []
+            for trade in trades:
+                unique_trade_id = f'{trade["group"]}-{trade["id"]}'
+                if unique_trade_id in unique_trade_ids:
+                    continue
+                else:
+                    unique_trade_ids.append(unique_trade_id)
+                    if not first_iter:
+                        # do not send notifications on first check
+                        new_trades.append(trade)
+
+            logger.info(f'{len(trades)} trades found for {account["user"]}. {len(new_trades)} new.')
+
+            for trade in new_trades:
+                send_notification(account, trade)
+
+            random_sleep()
+        first_iter = False
