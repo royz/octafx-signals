@@ -5,7 +5,6 @@ import random
 import config
 import logging
 import requests
-from pprint import pprint
 from bs4 import BeautifulSoup
 
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -41,9 +40,15 @@ class Octafx:
             "fromFront": "1"
         }
 
-        response = self.session.post('https://my.octafx.com/auth/login/',
-                                     headers=headers, json=data)
-        return response.status_code == 200
+        try:
+            response = self.session.post('https://my.octafx.com/auth/login/',
+                                         headers=headers, json=data)
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(err(e))
+            logger.error('could not log in.retrying after 15 seconds...')
+            time.sleep(15)
+            return self.login()
 
     def update_trades(self, account_number='13102515'):
         headers = {
@@ -143,12 +148,20 @@ def send_notification(account, trade_info):
     logger.info(
         f'new notification for {account["user"]}: {trade_info["group"]} | {trade_info["symbol"]} | {trade_info["type"]}'
     )
+
     url = f'https://api.telegram.org/bot{telegram_account["token"]}/sendMessage'
 
-    text = f'Order {trade_info["id"]}\n' \
-           f'{"===[ NEW ]===========" if trade_info["group"] == "open" else "===CLOSED==========="}\n' \
-           f'{trade_info["symbol"]} {trade_info["type"]}\n' \
-           f'==================='
+    if trade_info["group"] == "open":
+        text = f'Order {trade_info["id"]}\n' \
+               f'===[ NEW ]===========' \
+               f' {trade_info["symbol"]} {trade_info["type"]}\n' \
+               f'==================='
+    else:
+        text = f'Close signal\n' \
+               f'Order {trade_info["id"]}\n' \
+               f'===CLOSED===========\n' \
+               f' {trade_info["symbol"]} CLOSE\n' \
+               f'==================='
 
     params = {
         'chat_id': telegram_account['chat_id'],
