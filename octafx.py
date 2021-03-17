@@ -38,9 +38,13 @@ class Octafx:
                 current_url = driver.current_url
 
                 # check if captcha was shown
-                if driver.find_element_by_id('captchaContainerId_1'):
-                    print('solve the captcha and click login')
-                else:
+                try:
+                    if driver.find_element_by_id('captchaContainerId_1'):
+                        print('solve the captcha and click login')
+                    else:
+                        driver.find_element_by_css_selector(
+                            'button[data-auto-event-action="Sign In form click"]').click()
+                except:
                     # login
                     driver.find_element_by_css_selector('button[data-auto-event-action="Sign In form click"]').click()
 
