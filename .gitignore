@@ -5,3 +5,6 @@ config.py
 *.txt
 *.html
 *.log
+*.exe
+*.zip
+*test*

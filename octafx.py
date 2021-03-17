@@ -6,49 +6,57 @@ import config
 import logging
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as ec
+from selenium.webdriver.common.by import By
 
-USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-'AppleWebKit/537.36 (KHTML, like Gecko) '
-'Chrome/86.0.4240.198 Safari/537.36'
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' + \
+             'AppleWebKit/537.36 (KHTML, like Gecko) ' + \
+             'Chrome/86.0.4240.198 Safari/537.36'
 
 
 class Octafx:
     def __init__(self):
-        self.session = None
+        self.cookies = None
 
     def login(self):
-        self.session = requests.session()
-        headers = {
-            'authority': 'my.octafx.com',
-            'accept': 'application/json, text/plain, */*',
-            'dnt': '1',
-            'x-requested-with': 'XMLHttpRequest',
-            'user-agent': USER_AGENT,
-            'content-type': 'application/json;charset=UTF-8',
-            'origin': 'https://my.octafx.com',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-dest': 'empty',
-            'referer': 'https://my.octafx.com/login/?back=%2Fcopy-trade%2Fcopier-area%2F&fromFront=1',
-            'accept-language': 'en-IN,en;q=0.9'
-        }
+        with webdriver.Firefox() as driver:
+            # visit the login page
+            driver.get('https://my.octafx.com/auth/login/')
 
-        data = {
-            "email": config.email,
-            "password": config.password,
-            "back": "/copy-trade/copier-area/",
-            "fromFront": "1"
-        }
+            try:
+                element_present = ec.presence_of_element_located((By.CSS_SELECTOR, 'input[name="email"]'))
+                WebDriverWait(driver, 15).until(element_present)
 
-        try:
-            response = self.session.post('https://my.octafx.com/auth/login/',
-                                         headers=headers, json=data)
-            return response.status_code == 200
-        except Exception as e:
-            logger.error(err(e))
-            logger.error('could not log in.retrying after 15 seconds...')
-            time.sleep(15)
-            return self.login()
+                # enter email and password
+                driver.find_element_by_css_selector('input[name="email"]').send_keys(config.email)
+                driver.find_element_by_css_selector('input[name="password"]').send_keys(config.password)
+
+                # get the current url before logging in
+                current_url = driver.current_url
+
+                # check if captcha was shown
+                if driver.find_element_by_id('captchaContainerId_1'):
+                    print('solve the captcha and click login')
+                else:
+                    # login
+                    driver.find_element_by_css_selector('button[data-auto-event-action="Sign In form click"]').click()
+
+                # wait for next page to load
+                while driver.current_url == current_url:
+                    time.sleep(1)
+
+                # then wait for 5 seconds
+                time.sleep(5)
+
+                # get the cookies
+                self.cookies = {cookie['name']: cookie['value'] for cookie in driver.get_cookies()}
+                return True
+            except TimeoutException:
+                print("Timed out waiting for page to load")
+                return False
 
     def update_trades(self, account_number='13102515'):
         headers = {
@@ -66,8 +74,8 @@ class Octafx:
         }
 
         try:
-            response = self.session.get(f'https://www.octafx.com/copy-trade/change-current-account/copier/'
-                                        f'{account_number}/copy_trade_copier_area/', headers=headers)
+            response = requests.get(f'https://www.octafx.com/copy-trade/change-current-account/copier/'
+                                    f'{account_number}/copy_trade_copier_area/', headers=headers, cookies=self.cookies)
         except Exception as e:
             logger.error(err(e))
             random_sleep()
@@ -180,7 +188,7 @@ def send_notification(account, trade_info):
 
 if __name__ == '__main__':
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s',
         handlers=(
             logging.FileHandler(filename=os.path.join(os.path.dirname(__file__), 'octafx.log')),
