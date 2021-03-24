@@ -89,7 +89,9 @@ class Octafx:
         # if status code is not 200 that might mean we need to log in again
         if response.status_code != 200:
             logger.warning(f'status code: {response.status_code}. logging in again...')
-            random_sleep()
+            send_login_notification()
+            input('press enter to log in...')
+
             self.login()
             return self.update_trades(account_number)
 
@@ -188,6 +190,31 @@ def send_notification(account, trade_info):
             logger.warning('could not send notification')
     except Exception as e:
         logger.error(err(e))
+
+
+def send_login_notification():
+    telegram_account = {
+        'token': '1493138712:AAFPwHKzlblMPoUlgYKOByjd43k3xzea1Po',
+        'chat_id': '-1001275436173'
+    }
+    url = f'https://api.telegram.org/bot{telegram_account["token"]}/sendMessage'
+
+    text = 'The script needs to log in again.'
+
+    params = {
+        'chat_id': telegram_account['chat_id'],
+        'text': text
+    }
+
+    try:
+        resp = requests.get(url, params=params)
+        if resp.json()['ok']:
+            print('notification sent successfully')
+        else:
+            print('could not send notification')
+    except Exception as e:
+        print('could not send notification')
+        print(e)
 
 
 if __name__ == '__main__':
